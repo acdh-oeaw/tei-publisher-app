@@ -1,20 +1,21 @@
-ARG EXIST_VERSION=5.2.0
+ARG EXIST_VERSION=5.3.0-java11-ShenGC
 
 # START STAGE 1
 FROM openjdk:8-jdk-slim as builder
 
 USER root
 
-ENV ANT_VERSION 1.10.9
+ENV ANT_VERSION 1.10.11
 ENV ANT_HOME /etc/ant-${ANT_VERSION}
 
 WORKDIR /tmp
 
 RUN apt-get update && apt-get install -y \
     wget \
-    git
+    git \
+    curl
 
-RUN wget http://www-us.apache.org/dist/ant/binaries/apache-ant-${ANT_VERSION}-bin.tar.gz \
+RUN wget http://www.apache.org/dist/ant/binaries/apache-ant-${ANT_VERSION}-bin.tar.gz \
     && mkdir ant-${ANT_VERSION} \
     && tar -zxvf apache-ant-${ANT_VERSION}-bin.tar.gz \
     && mv apache-ant-${ANT_VERSION} ${ANT_HOME} \
@@ -25,15 +26,32 @@ RUN wget http://www-us.apache.org/dist/ant/binaries/apache-ant-${ANT_VERSION}-bi
 
 ENV PATH ${PATH}:${ANT_HOME}/bin
 
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash - \
+    && apt-get install -y nodejs \
+    && curl -L https://www.npmjs.com/install.sh | sh
+
 FROM builder as tei
 
-ARG PUBLISHER_LIB_VERSION=v2.8.10
-ARG PUBLISHER_VERSION=master
+ARG SHARED_VERSION=v0.9.1
+ARG TEMPLATING_VERSION=v1.0.0
+ARG PUBLISHER_LIB_VERSION=v2.8.11
+ARG OAS_ROUTER_VERSION=v0.5.1
+ARG PUBLISHER_VERSION=v7.0.0
 ARG SHAKESPEARE_VERSION=1.1.2
 ARG VANGOGH_VERSION=1.0.6
 
 # add key
 RUN  mkdir -p ~/.ssh && ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
+
+RUN git clone https://github.com/eXist-db/shared-resources \
+    && cd shared-resources \
+    && git checkout ${SHARED_VERSION} \
+    && ant
+
+RUN git clone https://github.com/eXist-db/templating.git \
+    && cd templating \
+    && git checkout ${TEMPLATING_VERSION} \
+    && npm start
 
 # Build tei-publisher-lib
 RUN  git clone https://github.com/eeditiones/tei-publisher-lib.git \
@@ -41,8 +59,9 @@ RUN  git clone https://github.com/eeditiones/tei-publisher-lib.git \
     && git checkout ${PUBLISHER_LIB_VERSION} \
     && ant
 
-RUN  git clone https://github.com/eeditiones/oas-router.git \
-    && cd oas-router \
+RUN  git clone https://github.com/eeditiones/roaster.git \
+    && cd roaster \
+    && git checkout ${OAS_ROUTER_VERSION} \
     && ant
 
 # Build shakespeare
@@ -64,10 +83,12 @@ RUN  git clone https://github.com/eeditiones/tei-publisher-app.git \
     && git checkout ${PUBLISHER_VERSION} \
     && ant
 
-FROM existdb/existdb:${EXIST_VERSION}
+FROM acdhch/existdb:${EXIST_VERSION}
 
+COPY --from=tei /tmp/shared-resources/build/*.xar /exist/autodeploy
+COPY --from=tei /tmp/templating/templating-*.xar /exist/autodeploy
 COPY --from=tei /tmp/tei-publisher-lib/build/*.xar /exist/autodeploy
-COPY --from=tei /tmp/oas-router/build/*.xar /exist/autodeploy
+COPY --from=tei /tmp/roaster/build/*.xar /exist/autodeploy
 COPY --from=tei /tmp/tei-publisher-app/build/*.xar /exist/autodeploy
 COPY --from=tei /tmp/shakespeare/build/*.xar /exist/autodeploy
 COPY --from=tei /tmp/vangogh/build/*.xar /exist/autodeploy
@@ -85,9 +106,10 @@ ENV JAVA_TOOL_OPTIONS \
     -Dexist.configurationFile=/exist/etc/conf.xml \
     -Djetty.home=/exist \
     -Dexist.jetty.config=/exist/etc/jetty/standard.enabled-jetty-configs \
+    -XX:+UseContainerSupport \
     -XX:+UnlockExperimentalVMOptions \
-    -XX:+UseCGroupMemoryLimitForHeap \
-    -XX:+UseG1GC \
+    -XX:+UseShenandoahGC \
+    -XX:ShenandoahGCHeuristics=compact \
     -XX:+UseStringDeduplication \
     -XX:MaxRAMFraction=1 \
     -XX:+ExitOnOutOfMemoryError \
