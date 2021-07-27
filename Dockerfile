@@ -1,4 +1,4 @@
-ARG EXIST_VERSION=5.3.0
+ARG EXIST_VERSION=5.3.0-java11-ShenGC
 
 # START STAGE 1
 FROM openjdk:8-jdk-slim as builder
@@ -32,9 +32,10 @@ RUN curl -sL https://deb.nodesource.com/setup_14.x | bash - \
 FROM builder as tei
 
 ARG TEMPLATING_VERSION=v1.0.0
+ARG SHARED_VERSION=v0.9.1
 ARG PUBLISHER_LIB_VERSION=v2.9.0
 ARG OAS_ROUTER_VERSION=v0.5.1
-ARG PUBLISHER_VERSION=master
+ARG PUBLISHER_VERSION=v7.1.0
 ARG SHAKESPEARE_VERSION=1.1.2
 ARG VANGOGH_VERSION=1.0.6
 
@@ -45,6 +46,11 @@ RUN git clone https://github.com/eXist-db/templating.git \
     && cd templating \
     && git checkout ${TEMPLATING_VERSION} \
     && npm start
+
+RUN git clone https://github.com/eXist-db/shared-resources \
+    && cd shared-resources \
+    && git checkout ${SHARED_VERSION} \
+    && ant
 
 # Build tei-publisher-lib
 RUN  git clone https://github.com/eeditiones/tei-publisher-lib.git \
@@ -76,8 +82,9 @@ RUN  git clone https://github.com/eeditiones/tei-publisher-app.git \
     && git checkout ${PUBLISHER_VERSION} \
     && ant
 
-FROM existdb/existdb:${EXIST_VERSION}
+FROM acdhch/existdb:${EXIST_VERSION}
 
+COPY --from=tei /tmp/shared-resources/build/*.xar /exist/autodeploy
 COPY --from=tei /tmp/templating/templating-*.xar /exist/autodeploy
 COPY --from=tei /tmp/tei-publisher-lib/build/*.xar /exist/autodeploy
 COPY --from=tei /tmp/roaster/build/*.xar /exist/autodeploy
@@ -98,9 +105,10 @@ ENV JAVA_TOOL_OPTIONS \
     -Dexist.configurationFile=/exist/etc/conf.xml \
     -Djetty.home=/exist \
     -Dexist.jetty.config=/exist/etc/jetty/standard.enabled-jetty-configs \
+    -XX:+UseContainerSupport \
     -XX:+UnlockExperimentalVMOptions \
-    -XX:+UseCGroupMemoryLimitForHeap \
-    -XX:+UseG1GC \
+    -XX:+UseShenandoahGC \
+    -XX:ShenandoahGCHeuristics=compact \
     -XX:+UseStringDeduplication \
     -XX:MaxRAMFraction=1 \
     -XX:+ExitOnOutOfMemoryError \
