@@ -1,11 +1,11 @@
-ARG EXIST_VERSION=6.2.0
+ARG EXIST_VERSION=6.2.0-java11-ShenGC
 
 # START STAGE 1
 FROM openjdk:8-jdk-slim as builder
 
 USER root
 
-ENV ANT_VERSION 1.10.12
+ENV ANT_VERSION 1.10.13
 ENV ANT_HOME /etc/ant-${ANT_VERSION}
 
 WORKDIR /tmp
@@ -78,7 +78,7 @@ RUN  git clone https://github.com/eeditiones/tei-publisher-app.git \
 
 RUN curl -L -o /tmp/shared-resources-0.9.1.xar https://exist-db.org/exist/apps/public-repo/public/shared-resources-0.9.1.xar
 
-FROM existdb/existdb:${EXIST_VERSION}
+FROM acdhch/existdb:${EXIST_VERSION}
 
 COPY --from=tei /tmp/templating/templating-*.xar /exist/autodeploy
 COPY --from=tei /tmp/tei-publisher-lib/build/*.xar /exist/autodeploy
@@ -102,8 +102,9 @@ ENV JAVA_TOOL_OPTIONS \
     -Djetty.home=/exist \
     -Dexist.jetty.config=/exist/etc/jetty/standard.enabled-jetty-configs \
     -XX:+UnlockExperimentalVMOptions \
-    -XX:+UseCGroupMemoryLimitForHeap \
-    -XX:+UseG1GC \
+    -XX:+UseContainerSupport \
+    -XX:+UseShenandoahGC \
+    -XX:ShenandoahGCHeuristics=compact \
     -XX:+UseStringDeduplication \
     -XX:MaxRAMFraction=1 \
     -XX:+ExitOnOutOfMemoryError \
