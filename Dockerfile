@@ -1,4 +1,4 @@
-ARG EXIST_VERSION=5.3.0-java11-ShenGC
+ARG EXIST_VERSION=5.3.1-java11-ShenGC
 
 # START STAGE 1
 FROM openjdk:8-jdk-slim as builder
